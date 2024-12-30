@@ -3,7 +3,6 @@ import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ThemeToggle } from "./ThemeToggle";
 
 interface Message {
   id: string;
@@ -49,10 +48,7 @@ export const ChatContainer = () => {
   };
 
   return (
-    <Card className="w-full max-w-4xl mx-auto h-[80vh] flex flex-col bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 relative">
-      <div className="absolute top-2 right-2 z-10">
-        <ThemeToggle />
-      </div>
+    <Card className="w-full max-w-4xl mx-auto h-[80vh] flex flex-col bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
         <div className="space-y-4">
           {messages.map((message) => (
