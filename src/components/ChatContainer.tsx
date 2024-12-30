@@ -3,6 +3,7 @@ import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { WebSocketService } from "@/services/websocketService";
 
 interface Message {
   id: string;
@@ -17,8 +18,31 @@ export const ChatContainer = () => {
   const [isVideoOn, setIsVideoOn] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const wsRef = useRef<WebSocketService | null>(null);
 
-  // Auto-scroll when new messages arrive
+  useEffect(() => {
+    // Initialize WebSocket connection
+    wsRef.current = new WebSocketService();
+    
+    // Set up message handler
+    wsRef.current.onMessage((content) => {
+      const assistantMessage: Message = {
+        id: Date.now().toString(),
+        content,
+        isUser: false,
+        timestamp: new Date().toLocaleTimeString(),
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.disconnect();
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (scrollAreaRef.current) {
       const scrollArea = scrollAreaRef.current;
@@ -38,16 +62,10 @@ export const ChatContainer = () => {
     };
     setMessages((prev) => [...prev, newMessage]);
     
-    // Simulate assistant response
-    setTimeout(() => {
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: "This is a simulated response from the assistant.",
-        isUser: false,
-        timestamp: new Date().toLocaleTimeString(),
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
-    }, 1000);
+    // Send message through WebSocket
+    if (wsRef.current) {
+      wsRef.current.sendMessage(content);
+    }
   };
 
   return (
