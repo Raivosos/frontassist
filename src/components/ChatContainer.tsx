@@ -22,7 +22,10 @@ export const ChatContainer = () => {
   useEffect(() => {
     if (scrollAreaRef.current) {
       const scrollArea = scrollAreaRef.current;
-      scrollArea.scrollTop = scrollArea.scrollHeight;
+      const scrollableArea = scrollArea.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollableArea) {
+        scrollableArea.scrollTop = scrollableArea.scrollHeight;
+      }
     }
   }, [messages]);
 
