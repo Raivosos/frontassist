@@ -4,7 +4,7 @@ import asyncio
 import sys
 import traceback
 import argparse
-from websockets.asyncio.client import connect
+from websockets.asyncio.server import serve
 import json
 import cv2
 
@@ -76,42 +76,17 @@ class AudioLoop:
             msg = await self.out_queue.get()
             await self.ws.send(json.dumps(msg))
 
-    async def process_frontend_messages(self):
-        print("Starting frontend message processor...")
-        while True:
-            try:
-                message = await self.message_queue.get()
-                print(f"Received message from frontend: {message}")
-                if message:
-                    await self.ws.send(json.dumps({
-                        "client_content": {
-                            "turn_complete": True,
-                            "turns": [{"role": "user", "parts": [{"text": message}]}],
-                        }
-                    }))
-            except Exception as e:
-                print(f"Error processing frontend message: {e}")
-
-    async def run(self):
-        print("Starting AudioLoop...")
+    async def handle_client(self, websocket):
+        print(f"New client connected from {websocket.remote_address}")
         try:
-            print(f"Connecting to WebSocket at {URI}...")
-            async with (
-                await connect(URI, additional_headers={"Content-Type": "application/json"}) as ws,
-                asyncio.TaskGroup() as tg,
-            ):
-                self.ws = ws
-                print("WebSocket connection established")
-                
-                ws_client = WebSocketClient(ws, self.message_queue)
+            async with asyncio.TaskGroup() as tg:
+                self.ws = websocket
+                ws_client = WebSocketClient(websocket, self.message_queue)
                 await ws_client.startup(MODEL)
-                print("WebSocket client initialized")
 
                 self.audio_in_queue = asyncio.Queue()
                 self.out_queue = asyncio.Queue(maxsize=5)
 
-                print("Starting tasks...")
-                tg.create_task(self.process_frontend_messages())
                 tg.create_task(self.send_realtime())
                 tg.create_task(self.audio_handler.listen_audio(self.out_queue))
                 
@@ -123,22 +98,25 @@ class AudioLoop:
                 tg.create_task(ws_client.receive_audio(self.audio_in_queue))
                 tg.create_task(self.audio_handler.play_audio(self.audio_in_queue))
 
-                print("All tasks started successfully")
-                
-                # Keep the connection alive
+                # Keep connection alive and handle incoming messages
                 while True:
-                    await asyncio.sleep(1)
+                    try:
+                        message = await websocket.recv()
+                        print(f"Received message from client: {message}")
+                        await self.message_queue.put(message)
+                    except Exception as e:
+                        print(f"Error handling client message: {e}")
+                        break
 
-        except asyncio.CancelledError:
-            print("Server shutdown requested")
-            pass
-        except ExceptionGroup as EG:
-            print("Error occurred:", str(EG))
-            self.audio_handler.audio_stream.close()
-            traceback.print_exception(EG)
         except Exception as e:
-            print(f"Unexpected error: {e}")
-            traceback.print_exc()
+            print(f"Error in client handler: {e}")
+        finally:
+            print(f"Client disconnected from {websocket.remote_address}")
+
+    async def run(self):
+        print("Starting server on ws://localhost:8000")
+        async with serve(self.handle_client, "localhost", 8000):
+            await asyncio.Future()  # run forever
 
 if __name__ == "__main__":
     print("Starting server...")
