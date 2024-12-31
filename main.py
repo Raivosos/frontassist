@@ -110,6 +110,7 @@ class AudioLoop:
 
         except Exception as e:
             print(f"Error in client handler: {e}")
+            traceback.print_exc()
         finally:
             print(f"Client disconnected from {websocket.remote_address}")
 
