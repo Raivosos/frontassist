@@ -46,8 +46,10 @@ class AudioLoop:
         self.media_handler = MediaHandler()
         self.audio_handler = AudioHandler()
         self.message_queue = asyncio.Queue()
+        print("AudioLoop initialized successfully")
 
     async def get_frames(self):
+        print("Starting camera capture...")
         cap = await asyncio.to_thread(cv2.VideoCapture, 0)
         while True:
             frame = await asyncio.to_thread(self.media_handler._get_frame, cap)
@@ -59,6 +61,7 @@ class AudioLoop:
         cap.release()
 
     async def get_screen(self):
+        print("Starting screen capture...")
         while True:
             frame = await asyncio.to_thread(self.media_handler._get_screen)
             if frame is None:
@@ -68,34 +71,46 @@ class AudioLoop:
             await self.out_queue.put(msg)
 
     async def send_realtime(self):
+        print("Starting realtime message sender...")
         while True:
             msg = await self.out_queue.get()
             await self.ws.send(json.dumps(msg))
 
     async def process_frontend_messages(self):
+        print("Starting frontend message processor...")
         while True:
-            message = await self.message_queue.get()
-            if message:
-                await self.ws.send(json.dumps({
-                    "client_content": {
-                        "turn_complete": True,
-                        "turns": [{"role": "user", "parts": [{"text": message}]}],
-                    }
-                }))
+            try:
+                message = await self.message_queue.get()
+                print(f"Received message from frontend: {message}")
+                if message:
+                    await self.ws.send(json.dumps({
+                        "client_content": {
+                            "turn_complete": True,
+                            "turns": [{"role": "user", "parts": [{"text": message}]}],
+                        }
+                    }))
+            except Exception as e:
+                print(f"Error processing frontend message: {e}")
 
     async def run(self):
+        print("Starting AudioLoop...")
         try:
+            print(f"Connecting to WebSocket at {URI}...")
             async with (
                 await connect(URI, additional_headers={"Content-Type": "application/json"}) as ws,
                 asyncio.TaskGroup() as tg,
             ):
                 self.ws = ws
+                print("WebSocket connection established")
+                
                 ws_client = WebSocketClient(ws, self.message_queue)
                 await ws_client.startup(MODEL)
+                print("WebSocket client initialized")
 
                 self.audio_in_queue = asyncio.Queue()
                 self.out_queue = asyncio.Queue(maxsize=5)
 
+                print("Starting tasks...")
                 tg.create_task(self.process_frontend_messages())
                 tg.create_task(self.send_realtime())
                 tg.create_task(self.audio_handler.listen_audio(self.out_queue))
@@ -108,17 +123,31 @@ class AudioLoop:
                 tg.create_task(ws_client.receive_audio(self.audio_in_queue))
                 tg.create_task(self.audio_handler.play_audio(self.audio_in_queue))
 
+                print("All tasks started successfully")
+                
                 # Keep the connection alive
                 while True:
                     await asyncio.sleep(1)
 
         except asyncio.CancelledError:
+            print("Server shutdown requested")
             pass
         except ExceptionGroup as EG:
+            print("Error occurred:", str(EG))
             self.audio_handler.audio_stream.close()
             traceback.print_exception(EG)
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            traceback.print_exc()
 
 if __name__ == "__main__":
+    print("Starting server...")
     args = parse_args()
     main = AudioLoop(args.mode)
-    asyncio.run(main.run())
+    try:
+        asyncio.run(main.run())
+    except KeyboardInterrupt:
+        print("\nServer shutdown requested by user")
+    except Exception as e:
+        print(f"Fatal error: {e}")
+        traceback.print_exc()
